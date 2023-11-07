@@ -6,3 +6,394 @@ The training dataset consists of approximately 145k time series. Each of these t
 
 For each time series, you are provided the name of the article as well as the type of traffic that this time series represent (all, mobile, desktop, spider). You may use this metadata and any other publicly available data to make predictions. Unfortunately, the data source for this dataset does not distinguish between traffic values of zero and missing values. A missing value may mean the traffic was zero or that the data is not available for that day.
 
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# %%
+# Load data
+df = pd.read_csv("/kaggle/input/web-traffic-time-series-forecasting/train_1.csv.zip", compression = "zip")
+df.head()
+
+# %% [markdown]
+# ## Interchanging Rows and Column of data to get it in proper time series format
+
+# %%
+# Transpose rows and columns
+df = df.T
+df.head()
+
+# %%
+df = df.reset_index()
+df.head()
+
+# %%
+# Capture 1st rows of data and make it column header
+column_header = df.iloc[0,:].values
+
+df.columns = column_header
+
+# %%
+df.head()
+
+# %%
+# Drop 1st row
+df = df.drop(0, axis = 0)
+
+# %%
+df.head()
+
+# %%
+# Rename Page column to Date column
+df = df.rename(columns = {"Page" : "Date"})
+
+df.head()
+
+# %%
+# Check data type of date column
+print(df["Date"].dtype)
+
+# %%
+# Convert Date column to datetime datatype
+df["Date"] = pd.to_datetime(df["Date"])
+
+# %%
+# Check Date column datatype again
+print(df["Date"].dtype)
+
+# %%
+# Set Date column as index
+df = df.set_index("Date")
+
+# %%
+df.head()
+
+# %% [markdown]
+# Now the data is in proper time series format.
+
+# %% [markdown]
+# ## Splitting data based on different access types and different agents.
+
+# %%
+# Finding number of access types and agents
+access_types = []
+agents = []
+for column in df.columns:
+    access_type = column.split("_")[-2]
+    agent = column.split("_")[-1]
+    access_types.append(access_type)
+    agents.append(agent)
+
+# %%
+# Counting access types
+from collections import Counter
+access_dict = Counter(access_types)
+access_dict
+
+# %%
+print("Number of topics with all-access type:", access_dict["all-access"])
+print("Number of topics with desktop access:", access_dict["desktop"])
+print("Number of topics with mobile-web access:", access_dict["mobile-web"])
+
+# %%
+access_df = pd.DataFrame({"Access type" : access_dict.keys(),
+                          "Number of columns" : access_dict.values()})
+access_df
+
+# %%
+# Counting agents
+agents_dict = Counter(agents)
+agents_dict
+
+# %%
+print("Number of topics with spider as agent:", agents_dict["spider"])
+print("Number of topics with all-agents as agent:", agents_dict["all-agents"])
+
+# %%
+agents_df = pd.DataFrame({"Agent" : agents_dict.keys(),
+                          "Number of columns" : agents_dict.values()})
+agents_df
+
+# %%
+# Identifying number of columns with null values with respect to access type
+def count_null_columns(pattern):
+    pattern_columns = [column for column in df.columns if pattern in column]
+    return len(df[pattern_columns].isnull().sum()[df[pattern_columns].isnull().sum() > 0])
+
+no_of_cols_with_nulls = [count_null_columns(access_type) for access_type in access_df["Access type"]]
+
+access_df["No of columns with nulls"] = no_of_cols_with_nulls
+
+access_df
+
+# %%
+# Identifying number of columns with null values with respect to agents
+def count_null_columns(pattern):
+    pattern_columns = [column for column in df.columns if pattern in column]
+    return len(df[pattern_columns].isnull().sum()[df[pattern_columns].isnull().sum() > 0])
+
+no_of_cols_with_nulls = [count_null_columns(agent) for agent in agents_df["Agent"]]
+
+agents_df["No of columns with nulls"] = no_of_cols_with_nulls
+
+agents_df
+
+# %%
+# Calculating percentage of null values in access types
+access_df["% of nulls"] = access_df["No of columns with nulls"] / access_df["Number of columns"] * 100
+
+access_df
+
+# %% [markdown]
+# Percentage of missing values in each access type is almost same. So there is no pattern in missing values.
+
+# %%
+# Calculating percentage of null values in agents
+agents_df["% of nulls"] = agents_df["No of columns with nulls"] / agents_df["Number of columns"] * 100
+
+agents_df
+
+# %% [markdown]
+# Percentae of missing values is almost same with each agents. So there is no pattern in missing values.
+
+# %% [markdown]
+# ## Splitting data based on different projects (like 'en.wikipedia.org')
+
+# %%
+df.columns[86543].split("_")[-3:]
+
+# %%
+"_".join(df.columns[86543].split("_")[-3:])
+
+# %%
+df.columns[86543]
+
+# %%
+projects = []
+for column in df.columns:
+    project = column.split("_")[-3] # Extracting language code from column name (topic name)
+    projects.append(project)
+
+# %%
+project_dict = Counter(projects)
+project_dict
+
+# %%
+project_df = pd.DataFrame({"Project" : project_dict.keys(),
+                           "Number of columns" : project_dict.values()})
+
+project_df
+
+# %%
+# Identifying number of columns with null values with respect to projects
+def count_null_columns(pattern):
+    pattern_columns = [column for column in df.columns if pattern in column]
+    return len(df[pattern_columns].isnull().sum()[df[pattern_columns].isnull().sum() > 0])
+
+no_of_cols_with_nulls = [count_null_columns(project) for project in project_df["Project"]]
+
+project_df["No of columns with nulls"] = no_of_cols_with_nulls
+
+project_df
+
+# %%
+# Calculating percentage of null values
+project_df["% of nulls"] = project_df["No of columns with nulls"] / project_df["Number of columns"] * 100
+
+project_df
+
+# %%
+project_df.sort_values(by = "% of nulls", ascending = False)
+
+# %% [markdown]
+# columns with projects commons.wikimedia.org and www.mediawiki.org have 48% columns with null values
+
+# %%
+df.columns
+
+# %%
+required_column_names = [column for column in df.columns if "commons.wikimedia.org" in column]
+
+# %%
+df[required_column_names].sum().mean()
+
+# %%
+df[required_column_names]
+
+# %%
+project_df["Project"]
+
+# %%
+def extract_total_views(project):
+    required_column_names = [column for column in df.columns if project in column]
+    total_views = df[required_column_names].sum().sum()
+    return total_views
+
+# %%
+total_views = []
+for project in project_df["Project"]:
+    total_views.append(extract_total_views(project))
+    
+total_views
+
+# %%
+project_df["Total views"] = total_views
+project_df
+
+# %%
+def extract_average_views(project):
+    required_column_names = [column for column in df.columns if project in column]
+    average_views = df[required_column_names].sum().mean()
+    return average_views
+
+# %%
+average_views = []
+for project in project_df["Project"]:
+    average_views.append(extract_average_views(project))
+    
+average_views
+
+# %%
+project_df["Average views"] = average_views
+project_df
+
+# %%
+project_df['Total views'] = project_df['Total views'].astype('int64')
+project_df['Average views'] = project_df['Average views'].astype('int64')
+project_df
+
+# %%
+project_df_sorted = project_df.sort_values(by = "Average views", ascending = False)
+project_df_sorted
+
+# %%
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# %%
+plt.figure(figsize = (10,6))
+sns.barplot(x = project_df_sorted["Project"], y = project_df_sorted["Average views"])
+plt.xticks(rotation = "vertical")
+plt.title("Average views per each project")
+plt.show()
+
+# %% [markdown]
+# ## Popular pages in "en.wikipedia.org"
+
+# %%
+en_wikipedia_org_columns = [column for column in df.columns if "en.wikipedia.org" in column]
+
+top_pages_en = df[en_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_en
+
+# %%
+df[top_pages_en.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "es.wikipedia.org"
+
+# %%
+es_wikipedia_org_columns = [column for column in df.columns if "es.wikipedia.org" in column]
+
+top_pages_es = df[es_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_es
+
+# %%
+df[top_pages_es.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "ru.wikipedia.org"
+
+# %%
+ru_wikipedia_org_columns = [column for column in df.columns if "ru.wikipedia.org" in column]
+
+top_pages_ru = df[ru_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_ru
+
+# %%
+df[top_pages_ru.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "de.wikipedia.org"
+
+# %%
+de_wikipedia_org_columns = [column for column in df.columns if "de.wikipedia.org" in column]
+
+top_pages_de = df[de_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_de
+
+# %%
+df[top_pages_de.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "ja.wikipedia.org"
+
+# %%
+ja_wikipedia_org_columns = [column for column in df.columns if "ja.wikipedia.org" in column]
+
+top_pages_ja = df[ja_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_ja
+
+# %%
+df[top_pages_ja.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "fr.wikipedia.org"
+
+# %%
+fr_wikipedia_org_columns = [column for column in df.columns if "fr.wikipedia.org" in column]
+
+top_pages_fr = df[fr_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_fr
+
+# %%
+df[top_pages_fr.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "zh.wikipedia.org"
+
+# %%
+zh_wikipedia_org_columns = [column for column in df.columns if "zh.wikipedia.org" in column]
+
+top_pages_zh = df[zh_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_zh
+
+# %%
+df[top_pages_zh.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "commons.wikipedia.org"
+
+# %%
+commons_wikipedia_org_columns = [column for column in df.columns if "commons.wikimedia.org" in column]
+
+top_pages_commons = df[commons_wikipedia_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_commons
+
+# %%
+df[top_pages_commons.index].plot(figsize = (16,9))
+
+# %% [markdown]
+# ## Popular pages in "www.mediawiki.org"
+
+
+mediawiki_org_columns = [column for column in df.columns if "www.mediawiki.org" in column]
+
+top_pages_mediawiki = df[mediawiki_org_columns].mean().sort_values(ascending = False)[0:5]
+top_pages_mediawiki
+
+# %%
+df[top_pages_mediawiki.index].plot(figsize = (16,8))
+
+
